@@ -398,6 +398,8 @@ function computeResult(){
 function saveAchieved(v){
   ensureCase();
   const c=cases[currentId]; c.params=c.params||{};
+  //ดึงข้อมูล Param Row ปัจจุบันกลับมา (จุดนี้ที่เคยตกหล่นไปครับ)
+  const d=c.params[activeParam.key]=c.params[activeParam.key]||{}; 
   const val=Math.round(v*10)/10;
   
   // ===== capture landmark coordinates for future ML training dataset =====
@@ -407,7 +409,7 @@ function saveAchieved(v){
       ts:new Date().toISOString(), param:activeParam.key, paramName:activeParam.name,
       type:activeParam.type, film:activeFilm, obs:(activeFilm==='post'?activeObs:0),
       value:val, image:imgName, imgW:img.width, imgH:img.height,
-      // แก้ไขจาก [x, y] เป็น Object {x, y} เพื่อแก้ปัญหา Nested Array
+      // บันทึกเป็น Object เพื่อให้ผ่านกฎ Firebase ถาวร
       points:points.map(p=>({ x: Math.round(p.x*10)/10, y: Math.round(p.y*10)/10 })),
       pointsNorm:points.map(p=>({ x: +(p.x/img.width).toFixed(4), y: +(p.y/img.height).toFixed(4) }))
     });
@@ -603,7 +605,27 @@ function exportCSV(){
   a.download='TKA_measurements_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
   toast('Exported CSV ('+Object.keys(cases).length+' cases)');
 }
-function allAnnotations(){let out=[];Object.values(cases).forEach(c=>{(c.annotations||[]).forEach(a=>out.push(Object.assign({studyId:c.studyId},a)));});return out;}
+function allAnnotations(){
+  let out=[];
+  Object.values(cases).forEach(c=>{
+    (c.annotations||[]).forEach(a=>{
+      // ทำการ Deep Copy ข้อมูลเพื่อไม่ให้ไปกระทบโครงข้อมูลหลักในเครื่อง
+      let aCopy = JSON.parse(JSON.stringify(a));
+      aCopy.studyId = c.studyId;
+      
+      // ดักจับและแปลงร่างจาก Object {x, y} กลับมาเป็น Array [x, y] เพื่อให้ AI เอาไปเทรนต่อได้ทันที
+      if (aCopy.points && aCopy.points[0] && typeof aCopy.points[0] === 'object' && !Array.isArray(aCopy.points[0])) {
+        aCopy.points = aCopy.points.map(p => [p.x, p.y]);
+      }
+      if (aCopy.pointsNorm && aCopy.pointsNorm[0] && typeof aCopy.pointsNorm[0] === 'object' && !Array.isArray(aCopy.pointsNorm[0])) {
+        aCopy.pointsNorm = aCopy.pointsNorm.map(p => [p.x, p.y]);
+      }
+      
+      out.push(aCopy);
+    });
+  });
+  return out;
+}
 function updateAnnCount(){const el=document.getElementById('annN');if(el)el.textContent=allAnnotations().length;}
 function exportAnnotations(){
   const data=allAnnotations();
