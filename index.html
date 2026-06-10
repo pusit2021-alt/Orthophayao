@@ -398,8 +398,8 @@ function computeResult(){
 function saveAchieved(v){
   ensureCase();
   const c=cases[currentId]; c.params=c.params||{};
-  const d=c.params[activeParam.key]=c.params[activeParam.key]||{};
   const val=Math.round(v*10)/10;
+  
   // ===== capture landmark coordinates for future ML training dataset =====
   if(img&&points.length){
     c.annotations=c.annotations||[];
@@ -407,10 +407,12 @@ function saveAchieved(v){
       ts:new Date().toISOString(), param:activeParam.key, paramName:activeParam.name,
       type:activeParam.type, film:activeFilm, obs:(activeFilm==='post'?activeObs:0),
       value:val, image:imgName, imgW:img.width, imgH:img.height,
-      points:points.map(p=>[Math.round(p.x*10)/10, Math.round(p.y*10)/10]),
-      pointsNorm:points.map(p=>[+(p.x/img.width).toFixed(4), +(p.y/img.height).toFixed(4)])
+      // แก้ไขจาก [x, y] เป็น Object {x, y} เพื่อแก้ปัญหา Nested Array
+      points:points.map(p=>({ x: Math.round(p.x*10)/10, y: Math.round(p.y*10)/10 })),
+      pointsNorm:points.map(p=>({ x: +(p.x/img.width).toFixed(4), y: +(p.y/img.height).toFixed(4) }))
     });
   }
+  
   if(activeFilm==='pre'){
     d.planned=val;
     document.getElementById('pl_'+activeParam.key).value=val;
