@@ -633,6 +633,8 @@ function collectForm(){
   readParamInputs();
   if(c.studyId!==currentId){delete cases[currentId];currentId=c.studyId;cases[currentId]=c;}
 }
+
+// 🌐 ปรับแต่งส่วนการทำงานของฟังก์ชันเติมฟอร์ม (fillForm) เพื่อเชื่อมลิงก์เข้าดึงรูปผ่าน Local PHP Proxy ของ Google Drive API
 function fillForm(c){
   document.getElementById('fStudyId').value=c.studyId||'';
   document.getElementById('fAge').value=c.age||'';
@@ -647,7 +649,32 @@ function fillForm(c){
   document.getElementById('fOptime').value=c.optime||'';
   document.getElementById('fComp').value=c.comp||'';
   buildMeasureList();
+  
+  if(c.studyId) {
+    toast('📥 กำลังโหลดรูปภาพเคสจาก secure Google Drive...', 0);
+    img = new Image();
+    // อนุญาตข้ามโดเมนข้ามพอร์ตโลคอล ป้องกันปัญหารูปภาพติดล็อกความปลอดภัยตอนวาดพิกัด (CORS Canvas Taint)
+    img.crossOrigin = "anonymous"; 
+    img.onload = () => {
+      document.getElementById('emptyState').style.display = 'none';
+      fitImage();
+      toast('โหลดรูปภาพสำเร็จ ✓', 1500);
+    };
+    img.onerror = () => {
+      img = null;
+      document.getElementById('emptyState').style.display = 'flex';
+      draw();
+      toast('💡 ไม่พบไฟล์ภาพบน Drive (คุณยังสามารถเลือกเปิดไฟล์ในเครื่องหรือวางภาพด้วยมือได้ตามปกติ)', 3500);
+    };
+    // ปรับเส้นทาง URL วิ่งตรงเข้าหาพอร์ตเซิร์ฟเวอร์จำลอง 8000 ที่กำลังทำงานอยู่บนเครื่องคอมพิวเตอร์ของคุณ
+    img.src = `http://localhost:8000/get_image.php?studyId=${c.studyId}`;
+  } else {
+    img = null;
+    document.getElementById('emptyState').style.display = 'flex';
+    draw();
+  }
 }
+
 function refreshCaseSel(){
   const sel=document.getElementById('caseSel'); const cur=sel.value;
   sel.innerHTML='<option value="">— New case —</option>';
@@ -688,7 +715,7 @@ function exportCSV(){
     });
     const mAch=o=>{const a=[o.ach1,o.ach2].filter(v=>v!=null&&!isNaN(v));return a.length?a.reduce((x,y)=>x+y,0)/a.length:null;};
     const mp=(c.params&&c.params.mpta)||{}, ml=(c.params&&c.params.ldfa)||{};
-    const plM=(mp.planned!=null&&!isNaN(mp.planned))?mp.planned:null, plL=(ml.planned!=null&&!isNaN(ml.planned))?ml.planned:null;
+    const plM=(mp.planned!=null&&!isNaN(mp.planned))?mp.planned:null, plL=(ml.unified!=null&&!isNaN(ml.planned))?ml.planned:null;
     const acM=mAch(mp), acL=mAch(ml);
     const ahP=(plM!=null&&plL!=null)?plM-plL:null, ahA=(acM!=null&&acL!=null)?acM-acL:null;
     let ahDev='',ahOut=''; if(ahP!=null&&ahA!=null){const dv=Math.abs(ahP-ahA);ahDev=dv.toFixed(1);ahOut=dv<=3?'0':'1';}
@@ -834,7 +861,6 @@ document.querySelectorAll('[data-film]').forEach(b=>b.onclick=()=>{
   updateHint();
 });
 
-// ดักจับการกดสวิตช์เปิด-ปิด HUD Guide เพื่อให้รีเฟรชหน้าแคนวาสทันทีที่ติ๊กเลือก
 document.getElementById('chkShowHud').onchange=draw;
 
 document.getElementById('fWeight').oninput=calcBMI;
