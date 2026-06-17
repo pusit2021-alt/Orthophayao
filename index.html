@@ -43,12 +43,16 @@ body{display:flex;flex-direction:column;overflow:hidden}
 .empty svg{opacity:.4}
 .zoombar{position:absolute;bottom:14px;left:14px;display:flex;gap:6px;z-index:5}
 .zoombar .btn{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:18px;padding:0}
-.result-pill{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:6;
+
+/* 🎯 ปรับตำแหน่งกล่องแสดงผลลัพธ์มุมที่วัดได้ขึ้นไปไว้มุมบนขวา ไม่เกะกะรูปภาพตรงกลางและขอบล่าง */
+.result-pill{position:absolute;top:14px;right:14px;z-index:6;
   background:var(--surface);border:1px solid var(--blue);border-radius:14px;padding:10px 16px;
-  display:none;flex-direction:column;align-items:center;gap:8px;min-width:240px}
+  display:none;flex-direction:column;align-items:center;gap:8px;min-width:240px;
+  box-shadow:0 4px 14px rgba(0,0,0,0.4)}
 .result-pill .val{font-size:30px;font-weight:700;color:var(--blue);line-height:1}
-.result-pill .sup{font-size:12px;color:var(--muted)}
+.result-pill .sup{font-size:12px;color:var(--muted);text-align:center}
 .result-pill .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+
 .panel{width:390px;max-width:42vw;background:var(--surface);border-left:1px solid var(--sep);
   overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
 .card{background:var(--surface2);border:1px solid var(--sep);border-radius:14px;padding:12px}
@@ -163,12 +167,12 @@ body{display:flex;flex-direction:column;overflow:hidden}
     </div>
 
     <div class="card">
-      <h3>Observer (for ICC)</h3>
+      <h3>Observer (Blinded Role 🔒)</h3>
       <div class="obs-toggle">
         <button id="obs1" class="active" data-obs="1">Observer 1</button>
         <button id="obs2" data-obs="2">Observer 2</button>
       </div>
-      <div class="hint-txt">Select observer before saving (applies to Post-op). Measured value goes to that observer’s Achieved field.</div>
+      <div class="hint-txt" style="color:var(--amber);font-weight:500;">⚠️ ระบบสุ่มปิดตาผู้ตรวจ: คุณจะไม่สามารถมองเห็นตัวเลขการวัดมุมของ Observer ท่านอื่นได้บนหน้าจอนี้</div>
     </div>
 
     <div class="card">
@@ -212,7 +216,7 @@ body{display:flex;flex-direction:column;overflow:hidden}
         <div class="dev na" id="cpak_match" style="font-size:13px">—</div>
       </div>
       <div id="cpakDesc" class="hint-txt" style="margin-top:5px;color:var(--purple);font-weight:600"></div>
-      <div class="hint-txt">aHKA: negative = varus, positive = valgus (±2°) · JLO: &lt;177° apex distal, 177–183° neutral, &gt;183° apex proximal · CPAK 9 types per MacDessi 2021 (Achieved = mean of observers)</div>
+      <div class="hint-txt">aHKA: negative = varus, positive = valgus (±2°) · JLO: &lt;177° apex distal, 177–183° neutral, &gt;183° apex proximal · CPAK 9 types per MacDessi 2021 (Achieved = ของ Observer ปัจจุบัน)</div>
     </div>
 
     <div class="card">
@@ -270,11 +274,10 @@ const PARAMS = [
 let db=null, fbOn=false;
 let img=null, scale=1, ox=0, oy=0, imgName='';
 let activeParam=null, points=[], lastResult=null;
-let activeObs=1, activeFilm='post', activeView='ap'; // เพิ่มตัวแปรเก็บสถานะมุมมองฉายภาพ
+let activeObs=1, activeFilm='post', activeView='ap'; 
 let cases={};
 let currentId=null;
 
-// ตัวแปรเก็บรูปภาพคลังฟิล์ม x-ray แยกทั้ง 4 แผ่นแบบพร้อมใช้งานข้ามฝั่ง
 let imgPreAp=null, imgPreLat=null, imgPostAp=null, imgPostLat=null;
 let compareMode=false;
 
@@ -341,7 +344,6 @@ function draw(){
   const r=cwrap.getBoundingClientRect();
   ctx.clearRect(0,0,r.width,r.height);
   
-  // ⇄ เรนเดอร์โหมดดูเทียบสองฝั่ง (โดยเทียบ Pre-op กับ Post-op ของมุมมองที่เลือกอยู่ปัจจุบัน)
   if (compareMode) {
     let currentPre = activeView === 'ap' ? imgPreAp : imgPreLat;
     let currentPost = activeView === 'ap' ? imgPostAp : imgPostLat;
@@ -367,7 +369,6 @@ function draw(){
   if(!img)return;
   ctx.drawImage(img, ox, oy, img.width*scale, img.height*scale);
   
-  // 📋 วาดกล่องคู่มือสี่เหลี่ยมถาวรแบบ HUD
   const chkShowHud = document.getElementById('chkShowHud');
   if (chkShowHud && chkShowHud.checked && activeParam && activeParam.labels) {
     ctx.save();
@@ -401,7 +402,6 @@ function draw(){
     });
   }
 
-  // 🔍 ระบบเลนส์ซูมแว่นขยาย (Magnifying Glass Loupe)
   if(draggedPointIndex !== null && currentMouseScreen && sp[draggedPointIndex]) {
     const loupeR = 65; const loupeX = currentMouseScreen.x; const loupeY = currentMouseScreen.y - 100;
     const zoomFactor = 2.5; const scrTarget = sp[draggedPointIndex];
@@ -439,11 +439,25 @@ function angle2(p0,p1,p2,p3){
 }
 
 /* ====================== MEASUREMENT FLOW ====================== */
+// 🔒 ปรับปรุงระบบแสดงผลรายการวัดมุมแบบ Blinding Mask (ซ่อนข้อมูลของผู้ตรวจคนอื่น)
 function buildMeasureList(){
   const c=cases[currentId]; const ml=document.getElementById('measureList'); ml.innerHTML='';
+  
+  const isObs1Active = (activeObs === 1);
+  const isObs2Active = (activeObs === 2);
+
   PARAMS.forEach(P=>{
     const d=(c&&c.params&&c.params[P.key])||{};
     const div=document.createElement('div'); div.className='mrow';
+    
+    // ตั้งค่าเงื่อนไขบลิงค์หน้าจอ: ถ้าเป็นค่าของตนเองให้โชว์มุมปกติ ถ้าเป็นของคนอื่นให้ล็อกแสดงคำว่า 🔒 Blinded
+    const valObs1 = isObs1Active ? (d.ach1??'') : (d.ach1 != null ? '🔒 Blinded' : '—');
+    const valObs2 = isObs2Active ? (d.ach2??'') : (d.ach2 != null ? '🔒 Blinded' : '—');
+    
+    // บังคับปิดตายห้ามแกะห้ามพิมพ์ทับในช่องที่เป็นของบุคคลอื่น
+    const attrObs1 = isObs1Active ? '' : 'readonly style="opacity:0.4; pointer-events:none;"';
+    const attrObs2 = isObs2Active ? '' : 'readonly style="opacity:0.4; pointer-events:none;"';
+
     div.innerHTML=`
       <div class="mhead">
         <span class="mname">${P.name}</span>
@@ -452,8 +466,8 @@ function buildMeasureList(){
       </div>
       <div class="mgrid">
         <div><div class="lab">Planned</div><input class="mini" id="pl_${P.key}" inputmode="decimal" value="${d.planned??''}"></div>
-        <div><div class="lab">Ach.Obs1</div><input class="mini" id="a1_${P.key}" inputmode="decimal" value="${d.ach1??''}"></div>
-        <div><div class="lab">Ach.Obs2</div><input class="mini" id="a2_${P.key}" inputmode="decimal" value="${d.ach2??''}"></div>
+        <div><div class="lab">Ach.Obs1</div><input class="mini" id="a1_${P.key}" inputmode="decimal" value="${valObs1}" ${attrObs1}></div>
+        <div><div class="lab">Ach.Obs2</div><input class="mini" id="a2_${P.key}" inputmode="decimal" value="${valObs2}" ${attrObs2}></div>
         <div><div class="lab">Deviation</div><div class="dev na" id="dv_${P.key}">—</div></div>
       </div>`;
     ml.appendChild(div);
@@ -462,6 +476,7 @@ function buildMeasureList(){
   ml.querySelectorAll('.mini').forEach(inp=>inp.oninput=()=>{readParamInputs();recalcDev();});
   recalcDev();
 }
+
 function startMeasure(key){
   if(compareMode) { toast('⚠️ กรุณาปิดโหมดดูเทียบสี่แผ่นเพื่อลงมือปักจุดมาร์กมุม', 2500); return; }
   activeParam=PARAMS.find(p=>p.key===key); points=[]; lastResult=null;
@@ -533,26 +548,37 @@ function saveAchieved(v){
   document.getElementById('resultPill').style.display='none';
   points=[]; updateHint(); draw();
 }
+
+// 🔒 ป้องกันการเขียนทับ: เซ็ตค่าอ่านข้อมูลอัปเดตเฉพาะกล่องของ Observer คนปัจจุบันเพื่อรักษาสิทธิ์ความปลอดภัยข้อมูล
 function readParamInputs(){
   ensureCase(); const c=cases[currentId]; c.params=c.params||{};
   PARAMS.forEach(P=>{
     const d=c.params[P.key]=c.params[P.key]||{};
     const pl=document.getElementById('pl_'+P.key).value;
-    const a1=document.getElementById('a1_'+P.key).value;
-    const a2=document.getElementById('a2_'+P.key).value;
     d.planned=pl===''?null:parseFloat(pl);
-    d.ach1=a1===''?null:parseFloat(a1);
-    d.ach2=a2===''?null:parseFloat(a2);
+    
+    if(activeObs === 1) {
+      const a1=document.getElementById('a1_'+P.key).value;
+      if(a1 !== '🔒 Blinded') d.ach1 = a1===''?null:parseFloat(a1);
+    } else if(activeObs === 2) {
+      const a2=document.getElementById('a2_'+P.key).value;
+      if(a2 !== '🔒 Blinded') d.ach2 = a2===''?null:parseFloat(a2);
+    }
   });
 }
+
+// 🔒 ปรับแต่งให้ Deviation บนจอคำนวณเปรียบเทียบเฉพาะคู่แพทย์ปัจจุบันเพื่อไม่ให้เห็นมุมของอีกฝั่งคลาดเคลื่อน
 function recalcDev(){
   const c=cases[currentId]; if(!c||!c.params){computeDerived();return;}
   PARAMS.forEach(P=>{
     const d=c.params[P.key]||{}; const el=document.getElementById('dv_'+P.key);
     const bdg=document.getElementById('bdg_'+P.key); if(!el)return;
-    const achs=[d.ach1,d.ach2].filter(v=>v!=null&&!isNaN(v));
-    if(d.planned==null||isNaN(d.planned)||!achs.length){el.textContent='—';el.className='dev na';bdg.textContent='';bdg.className='badge';return;}
-    const ach=achs.reduce((a,b)=>a+b,0)/achs.length;
+    
+    let ach = null;
+    if (activeObs === 1 && d.ach1 != null && !isNaN(d.ach1)) ach = d.ach1;
+    else if (activeObs === 2 && d.ach2 != null && !isNaN(d.ach2)) ach = d.ach2;
+
+    if(d.planned==null||isNaN(d.planned)||ach==null){el.textContent='—';el.className='dev na';bdg.textContent='';bdg.className='badge';return;}
     const dev=Math.abs(d.planned-ach);
     el.textContent=dev.toFixed(1)+'°';
     const ok=dev<=P.thr; el.className='dev '+(ok?'ok':'bad');
@@ -560,8 +586,15 @@ function recalcDev(){
   });
   computeDerived();
 }
-function meanAch(key){const c=cases[currentId];if(!c||!c.params)return null;const d=c.params[key]||{};
-  const a=[d.ach1,d.ach2].filter(v=>v!=null&&!isNaN(v));return a.length?a.reduce((x,y)=>x+y,0)/a.length:null;}
+
+// 🔒 ล็อกฟังก์ชันให้อ่านค่าจำเพาะคนวิจัยปัจจุบันในการพล็อตตาราง CPAK บนจอหลัก
+function meanAch(key){
+  const c=cases[currentId];if(!c||!c.params)return null;const d=c.params[key]||{};
+  if (activeObs === 1) return (d.ach1 != null && !isNaN(d.ach1)) ? d.ach1 : null;
+  if (activeObs === 2) return (d.ach2 != null && !isNaN(d.ach2)) ? d.ach2 : null;
+  return null;
+}
+
 function plannedOf(key){const c=cases[currentId];if(!c||!c.params)return null;const d=c.params[key]||{};
   return (d.planned!=null&&!isNaN(d.planned))?d.planned:null;}
 function setDcell(id,val){const el=document.getElementById(id);if(!el)return;
@@ -633,7 +666,6 @@ function collectForm(){
   if(c.studyId!==currentId){delete cases[currentId];currentId=c.studyId;cases[currentId]=c;}
 }
 
-// 🌐 อัปเดตฟังก์ชันสลับสับเปลี่ยนรูปภาพโมเดล 4 มิติขนานแท้แบบเบ็ดเสร็จ
 function updateCurrentImage() {
   if (activeFilm === 'pre') {
     img = activeView === 'ap' ? imgPreAp : imgPreLat;
@@ -658,7 +690,6 @@ function fillForm(c){
   document.getElementById('fComp').value=c.comp||'';
   buildMeasureList();
   
-  // ล้างสถานะรูปแผ่นเดิมทั้งหมดก่อนเข้าสู่ลูปดาวน์โหลดใหม่
   imgPreAp = null; imgPreLat = null; imgPostAp = null; imgPostLat = null; img = null;
   compareMode = false;
   const compBtn = document.getElementById('btnCompare');
@@ -690,7 +721,6 @@ function fillForm(c){
       m.src = `http://localhost:8000/get_image.php?studyId=${c.studyId}&type=${suffix}`;
     };
 
-    // ยิงขนาน 4 เส้นเพื่อสอยรูปมาสแตนด์บายรอไว้บนแรมของหน้าแอปพลิเคชัน
     loadImg('pre_ap', m => imgPreAp = m);
     loadImg('pre_lat', m => imgPreLat = m);
     loadImg('post_ap', m => imgPostAp = m);
@@ -791,7 +821,7 @@ let downPt=null, moved=false;
 cv.addEventListener('pointerdown',e=>{
   currentMouseScreen = { x: e.offsetX, y: e.offsetY };
   moved=false; draggedPointIndex = null;
-  if(compareMode) return; // ล็อกปุ่มกดมาร์กจุดขณะอยู่บนโหมดดูคู่เทียบเพื่อความปลอดภัย
+  if(compareMode) return; 
 
   if(img && activeParam && points.length > 0) {
     const scrPoints = points.map(toScr);
@@ -851,13 +881,18 @@ window.addEventListener('paste',e=>{
   if(it)loadImageFile(it.getAsFile());
 });
 
+// 🔒 ซิงค์ปุ่มสลับผู้ตรวจ: เมื่อเปลี่ยน Observer จะทำความสะอาดหน้าจอ บังคับเปลี่ยน Mask ความปลอดภัยทันที
 document.querySelectorAll('[data-obs]').forEach(b=>b.onclick=()=>{
   activeObs=+b.dataset.obs;
   document.querySelectorAll('[data-obs]').forEach(x=>x.classList.toggle('active',x===b));
   toast('Switched to Observer '+activeObs, 1500);
+  
+  buildMeasureList();
+  recalcDev();
+  updateCurrentImage();
+  fitImage();
 });
 
-// ดักจับการกดสลับช่วงเวลาการรักษา (Pre / Post-op)
 document.querySelectorAll('[data-film]').forEach(b=>b.onclick=()=>{
   activeFilm=b.dataset.film;
   document.querySelectorAll('[data-film]').forEach(x=>x.classList.toggle('active',x===b));
@@ -871,21 +906,19 @@ document.querySelectorAll('[data-film]').forEach(b=>b.onclick=()=>{
   fitImage(); updateHint();
 });
 
-// ดักจับการกดสลับมุมมองกล้องฉายภาพ (Whole leg AP / Knee lateral) ที่เพิ่มเข้ามาใหม่ 🌟
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{
   activeView=b.dataset.view;
   document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));
   toast(activeView==='ap'?'สลับมุมมอง: Whole leg AP (ฟิล์มตรงขาเต็ม)':'สลับมุมมอง: Knee lateral (ฟิล์มข้างข้อเข่า)', 1800);
   
   compareMode = false;
-  document.getElementById('btnCompare').classList.remove('active');
+  document.getElementById('btnCompare').className='btn sm';
   
   updateCurrentImage();
   if(activeParam&&points.length>=(activeParam.type==='3pt'?3:4))computeResult();
   fitImage(); updateHint();
 });
 
-// ปุ่มโหมดแบ่งคู่เทียบสองฝั่ง (ฉลาดขึ้น: จะเอาแผ่น Pre และ Post ของมุมมองที่เปิดอยู่มาวางประกบข้างกัน)
 document.getElementById('btnCompare').onclick = () => {
   let currentPre = activeView === 'ap' ? imgPreAp : imgPreLat;
   let currentPost = activeView === 'ap' ? imgPostAp : imgPostLat;
