@@ -666,8 +666,8 @@ function fillForm(c){
       draw();
       toast('💡 ไม่พบไฟล์ภาพบน Drive (คุณยังสามารถเลือกเปิดไฟล์ในเครื่องหรือวางภาพด้วยมือได้ตามปกติ)', 3500);
     };
-// เปลี่ยนจาก localhost มาชี้เป้าเข้าหาโฮสติ้งจริงที่คุณสมัครไว้
-img.src = `https://easytka.site.je/get_image.php?studyId=${c.studyId}`;
+    // เปลี่ยนจาก localhost มาชี้เป้าเข้าหาโฮสติ้งจริงที่คุณสมัครไว้
+    img.src = `https://easytka.site.je/get_image.php?studyId=${c.studyId}`;
   } else {
     img = null;
     document.getElementById('emptyState').style.display = 'flex';
