@@ -66,6 +66,7 @@ body{display:flex;flex-direction:column;overflow:hidden}
 .obs-toggle button{flex:1;padding:7px;border:1.5px solid var(--sep);background:var(--bg);
   color:var(--muted);border-radius:9px;font-weight:700;font-size:13.5px;cursor:pointer;font-family:inherit}
 .obs-toggle button.active{background:var(--purple);border-color:var(--purple);color:#fff}
+#btnCompare.active {background:var(--purple)!important;color:#fff!important;border-color:var(--purple)!important}
 .measure-list{display:flex;flex-direction:column;gap:7px}
 .mrow{border:1px solid var(--sep);border-radius:11px;padding:9px 10px;background:var(--bg)}
 .mrow .mhead{display:flex;align-items:center;gap:8px;margin-bottom:6px}
@@ -153,6 +154,7 @@ body{display:flex;flex-direction:column;overflow:hidden}
         <button id="filmPre" data-film="pre">Pre-op</button>
         <button id="filmPost" class="active" data-film="post">Post-op</button>
       </div>
+      <button id="btnCompare" class="btn sm" style="width:100%;margin-top:8px;font-weight:700;border-color:var(--purple);color:var(--purple);background:transparent;">⇄ Compare View (ดูเทียบสองฝั่ง)</button>
       <div class="hint-txt">Pre-op → saves value as <b>Planned / target</b> (native alignment) · Post-op → saves as <b>Achieved</b> for the selected observer</div>
     </div>
 
@@ -268,6 +270,9 @@ let activeObs=1, activeFilm='post';
 let cases={};
 let currentId=null;
 
+let imgPre=null, imgPost=null; // โครงสร้างใหม่: บันทึกแผ่นฟิล์มคู่ไว้สแตนด์บาย
+let compareMode=false;         // เช็คสถานะโหมดแบ่งสองหน้าจอ
+
 let draggedPointIndex = null;
 let currentMouseScreen = { x: 0, y: 0 };
 
@@ -303,7 +308,18 @@ function resizeCanvas(){
   ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
   draw();
 }
+
 function fitImage(){
+  if (compareMode && imgPre && imgPost) {
+    const totalW = imgPre.width + imgPost.width + 40; // ดึงความกว้างของสองภาพบวกระยะห่าง 40px
+    const maxH = Math.max(imgPre.height, imgPost.height);
+    const r=cwrap.getBoundingClientRect();
+    scale=Math.min(r.width/totalW, r.height/maxH)*0.96;
+    ox=(r.width-totalW*scale)/2; oy=(r.height-maxH*scale)/2;
+    draw();
+    return;
+  }
+  
   if(!img)return;
   const r=cwrap.getBoundingClientRect();
   scale=Math.min(r.width/img.width, r.height/img.height)*0.96;
@@ -316,47 +332,44 @@ function toScr(p){ return {x:p.x*scale+ox, y:p.y*scale+oy}; }
 function draw(){
   const r=cwrap.getBoundingClientRect();
   ctx.clearRect(0,0,r.width,r.height);
+  
+  // ⇄ เรนเดอร์พิเศษในกรณีที่เปิดใช้งานโหมดดูรูปเทียบสองฝั่ง (Compare Mode) พร้อมกัน
+  if (compareMode && imgPre && imgPost) {
+    ctx.drawImage(imgPre, ox, oy, imgPre.width*scale, imgPre.height*scale);
+    const gap = 40 * scale;
+    const postOx = ox + (imgPre.width * scale) + gap;
+    ctx.drawImage(imgPost, postOx, oy, imgPost.width*scale, imgPost.height*scale);
+    
+    // วาดป้ายเขียนสัญลักษณ์ระบุด้านของฟิล์มให้แพทย์เข้าใจง่าย
+    ctx.save();
+    ctx.fillStyle = 'rgba(11, 12, 15, 0.8)';
+    ctx.fillRect(ox + 12, oy + 12, 85, 26);
+    ctx.fillRect(postOx + 12, oy + 12, 95, 26);
+    ctx.font = 'bold 12px Inter'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffd60a'; ctx.fillText('◀ PRE-OP', ox + 54, oy + 25);
+    ctx.fillStyle = '#bf5af2'; ctx.fillText('POST-OP ▶', postOx + 59, oy + 25);
+    ctx.restore();
+    return;
+  }
+
   if(!img)return;
   ctx.drawImage(img, ox, oy, img.width*scale, img.height*scale);
   
-  // 📋 1. วาดกล่องคู่มือสี่เหลี่ยมถาวรแบบ HUD (จะเรนเดอร์ก็ต่อเมื่อเปิดใช้งานจาก Settings เท่านั้น)
+  // 📋 วาดกล่องคู่มือสี่เหลี่ยมถาวรแบบ HUD
   const chkShowHud = document.getElementById('chkShowHud');
   if (chkShowHud && chkShowHud.checked && activeParam && activeParam.labels) {
     ctx.save();
-    ctx.fillStyle = 'rgba(22, 24, 29, 0.88)';
-    ctx.strokeStyle = '#2c313b';
-    ctx.lineWidth = 1.5;
-    
-    const hudX = 16;
-    const hudY = 16;
-    const hudW = 295;
-    const hudH = 32 + (activeParam.labels.length * 22);
-    
-    ctx.fillRect(hudX, hudY, hudW, hudH);
-    ctx.strokeRect(hudX, hudY, hudW, hudH);
-    
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#0a84ff';
-    ctx.font = 'bold 13px Inter';
+    ctx.fillStyle = 'rgba(22, 24, 29, 0.88)'; ctx.strokeStyle = '#2c313b'; ctx.lineWidth = 1.5;
+    const hudX = 16; const hudY = 16; const hudW = 295; const hudH = 32 + (activeParam.labels.length * 22);
+    ctx.fillRect(hudX, hudY, hudW, hudH); ctx.strokeRect(hudX, hudY, hudW, hudH);
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = '#0a84ff'; ctx.font = 'bold 13px Inter';
     ctx.fillText(`📋 Landmark Guide: ${activeParam.name}`, hudX + 12, hudY + 20);
-    
     const currentStep = points.length;
     activeParam.labels.forEach((label, idx) => {
       const itemY = hudY + 46 + (idx * 22);
-      if (idx === currentStep) {
-        ctx.fillStyle = '#ffd60a'; 
-        ctx.font = 'bold 12px Inter';
-        ctx.fillText(`➔  ${label} *`, hudX + 14, itemY);
-      } else if (idx < currentStep) {
-        ctx.fillStyle = '#30d158'; 
-        ctx.font = '500 12px Inter';
-        ctx.fillText(`✓  ${label}`, hudX + 14, itemY);
-      } else {
-        ctx.fillStyle = '#9aa3b2'; 
-        ctx.font = '400 12px Inter';
-        ctx.fillText(`      ${label}`, hudX + 14, itemY);
-      }
+      if (idx === currentStep) { ctx.fillStyle = '#ffd60a'; ctx.font = 'bold 12px Inter'; ctx.fillText(`➔  ${label} *`, hudX + 14, itemY); }
+      else if (idx < currentStep) { ctx.fillStyle = '#30d158'; ctx.font = '500 12px Inter'; ctx.fillText(`✓  ${label}`, hudX + 14, itemY); }
+      else { ctx.fillStyle = '#9aa3b2'; ctx.font = '400 12px Inter'; ctx.fillText(`      ${label}`, hudX + 14, itemY); }
     });
     ctx.restore();
   }
@@ -370,37 +383,21 @@ function draw(){
       if(sp.length>=2){ctx.beginPath();ctx.moveTo(sp[0].x,sp[0].y);ctx.lineTo(sp[1].x,sp[1].y);ctx.stroke();}
       if(sp.length>=4){ctx.strokeStyle='#30d158';ctx.beginPath();ctx.moveTo(sp[2].x,sp[2].y);ctx.lineTo(sp[3].x,sp[3].y);ctx.stroke();}
     }
-    
-    // วาดจุดวงกลมสีเหลืองพร้อมตัวเลขลำดับ (ข้อความแลนด์มาร์กข้างๆ จุดถูกถอนออกตามสั่งเพื่อความคลีน)
     sp.forEach((p,i)=>{
       ctx.fillStyle='#ffd60a';ctx.beginPath();ctx.arc(p.x,p.y,5,0,7);ctx.fill();
       ctx.fillStyle='#000';ctx.font='bold 11px Inter';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(i+1,p.x,p.y);
     });
   }
 
-  // 🔍 ระบบเลนส์ซูมแว่นขยาย (Magnifying Glass Loupe) ตอนจับลาก Fine-tuning ปรับแก้ตำแหน่งจุด
+  // 🔍 ระบบเลนส์ซูมแว่นขยาย (Magnifying Glass Loupe)
   if(draggedPointIndex !== null && currentMouseScreen && sp[draggedPointIndex]) {
-    const loupeR = 65;
-    const loupeX = currentMouseScreen.x;
-    const loupeY = currentMouseScreen.y - 100;
-    const zoomFactor = 2.5;
-    const scrTarget = sp[draggedPointIndex];
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(loupeX, loupeY, loupeR, 0, Math.PI * 2);
-    ctx.clip();
-
-    ctx.fillStyle = '#000';
-    ctx.fillRect(loupeX - loupeR, loupeY - loupeR, loupeR * 2, loupeR * 2);
-
-    ctx.translate(loupeX, loupeY);
-    ctx.scale(zoomFactor, zoomFactor);
-    ctx.translate(-scrTarget.x, -scrTarget.y);
-
+    const loupeR = 65; const loupeX = currentMouseScreen.x; const loupeY = currentMouseScreen.y - 100;
+    const zoomFactor = 2.5; const scrTarget = sp[draggedPointIndex];
+    ctx.save(); ctx.beginPath(); ctx.arc(loupeX, loupeY, loupeR, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = '#000'; ctx.fillRect(loupeX - loupeR, loupeY - loupeR, loupeR * 2, loupeR * 2);
+    ctx.translate(loupeX, loupeY); ctx.scale(zoomFactor, zoomFactor); ctx.translate(-scrTarget.x, -scrTarget.y);
     ctx.drawImage(img, ox, oy, img.width*scale, img.height*scale);
-    ctx.lineWidth = 2 / zoomFactor;
-    ctx.strokeStyle = '#0a84ff';
+    ctx.lineWidth = 2 / zoomFactor; ctx.strokeStyle = '#0a84ff';
     if(activeParam && activeParam.type==='3pt'){
       if(sp.length>=2){ctx.beginPath();ctx.moveTo(sp[0].x,sp[0].y);ctx.lineTo(sp[1].x,sp[1].y);if(sp[2])ctx.lineTo(sp[2].x,sp[2].y);ctx.stroke();}
     }else{
@@ -411,21 +408,10 @@ function draw(){
       ctx.fillStyle='#ffd60a';ctx.beginPath();ctx.arc(p.x,p.y,5/zoomFactor,0,7);ctx.fill();
       ctx.fillStyle='#000';ctx.font=`bold ${11/zoomFactor}px Inter`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(i+1,p.x,p.y);
     });
-
     ctx.restore();
-
-    ctx.beginPath();
-    ctx.arc(loupeX, loupeY, loupeR, 0, Math.PI * 2);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#0a84ff';
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(loupeX - 8, loupeY); ctx.lineTo(loupeX + 8, loupeY);
-    ctx.moveTo(loupeX, loupeY - 8); ctx.lineTo(loupeX, loupeY + 8);
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#ff453a';
-    ctx.stroke();
+    ctx.beginPath(); ctx.arc(loupeX, loupeY, loupeR, 0, Math.PI * 2); ctx.lineWidth = 3; ctx.strokeStyle = '#0a84ff'; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(loupeX - 8, loupeY); ctx.lineTo(loupeX + 8, loupeY); ctx.moveTo(loupeX, loupeY - 8); ctx.lineTo(loupeX, loupeY + 8);
+    ctx.lineWidth = 1.5; ctx.strokeStyle = '#ff453a'; ctx.stroke();
   }
 }
 
@@ -465,6 +451,7 @@ function buildMeasureList(){
   recalcDev();
 }
 function startMeasure(key){
+  if(compareMode) { toast('⚠️ กรุณาปิดโหมดดูเทียบเพื่อลงมือปักจุดมาร์กมุม', 2500); return; }
   activeParam=PARAMS.find(p=>p.key===key); points=[]; lastResult=null;
   document.querySelectorAll('.pick').forEach(b=>b.classList.toggle('active',b.dataset.k===key));
   document.getElementById('paramHint').textContent=activeParam.hint;
@@ -478,7 +465,7 @@ function updateHint(){
   const need=activeParam.type==='3pt'?3:4; const n=points.length;
   const ftag=`[${activeFilm==='pre'?'PRE-OP':'POST-OP'}] `;
   if(n<need) h.innerHTML=`${ftag}<b>${activeParam.name}</b> — กดคลิก: <b style="color:var(--amber)">${activeParam.labels[n]}</b> (${n+1}/${need})`;
-  else h.innerHTML=`${ftag}<b>${activeParam.name}</b> — เรียบร้อย · สามารถเลือกบันทึกด้านล่าง หรือลากวงกลมเพื่อปรับตำแหน่งใหม่ได้`;
+  else h.innerHTML=`${ftag}<b>${activeParam.name}</b> — เรียบร้อย · สามารถเลือกบันท่างด้านล่าง หรือลากวงกลมเพื่อปรับตำแหน่งใหม่ได้`;
 }
 function placePoint(p){
   const need=activeParam.type==='3pt'?3:4;
@@ -634,7 +621,7 @@ function collectForm(){
   if(c.studyId!==currentId){delete cases[currentId];currentId=c.studyId;cases[currentId]=c;}
 }
 
-// 🌐 ปรับแต่งส่วนการทำงานของฟังก์ชันเติมฟอร์ม (fillForm) เพื่อเชื่อมลิงก์เข้าดึงรูปผ่าน Local PHP Proxy ของ Google Drive API
+// 🌐 พัฒนาระบบโหลดฟิล์มคู่แบบขนานอัจฉริยะ (ดึงทั้งสองรูปมาสแตนด์บายรอไว้ข้ามฝั่ง)
 function fillForm(c){
   document.getElementById('fStudyId').value=c.studyId||'';
   document.getElementById('fAge').value=c.age||'';
@@ -650,28 +637,41 @@ function fillForm(c){
   document.getElementById('fComp').value=c.comp||'';
   buildMeasureList();
   
+  imgPre = null; imgPost = null; img = null;
+  compareMode = false;
+  const compBtn = document.getElementById('btnCompare');
+  if(compBtn) compBtn.classList.remove('active');
+  
   if(c.studyId) {
-    toast('📥 กำลังโหลดรูปภาพเคสจาก drive ...', 0);
-    img = new Image();
-    img.crossOrigin = "anonymous"; 
-    img.onload = () => {
-      document.getElementById('emptyState').style.display = 'none';
-      fitImage();
-      toast('โหลดรูปภาพสำเร็จ ✓', 1500);
+    toast('📥 กำลังสแกนตรวจสอบไฟล์รูปภาพ Pre & Post บน Drive...', 0);
+    let donePre = false, donePost = false;
+    let onComplete = () => {
+      if(donePre && donePost) {
+        if(imgPre || imgPost) {
+          document.getElementById('emptyState').style.display = 'none';
+          img = activeFilm === 'pre' ? imgPre : imgPost;
+          if(!img) img = imgPre || imgPost; // ตัวช่วยดึงภาพเดี่ยวกรณีเคสเก่า
+          imgName = activeFilm === 'pre' ? `${c.studyId}_pre.png` : `${c.studyId}_post.png`;
+          fitImage();
+          toast('ซิงค์โครงสร้างคลังภาพเรียบร้อย ✓', 1500);
+        } else {
+          document.getElementById('emptyState').style.display = 'flex'; draw();
+          toast('💡 ไม่พบไฟล์ภาพบนคลาวด์สำหรับรหัสเคสนี้', 3500);
+        }
+      }
     };
-    img.onerror = () => {
-      img = null;
-      document.getElementById('emptyState').style.display = 'flex';
-      draw();
-      toast('💡 ไม่พบไฟล์ภาพ (ตรวจสอบว่ารันเซิร์ฟเวอร์ใน Terminal หรือตั้งชื่อไฟล์ตรงกันไหม)', 3500);
-    };
-    
-    // 🎯 ดึงกลับมาใช้พอร์ต 8000 ในเครื่องเรา สบายใจที่สุดครับ
-    img.src = `http://localhost:8000/get_image.php?studyId=${c.studyId}`;
+
+    let pImg = new Image(); pImg.crossOrigin = "anonymous";
+    pImg.onload = () => { imgPre = pImg; donePre = true; onComplete(); };
+    pImg.onerror = () => { imgPre = null; donePre = true; onComplete(); };
+    pImg.src = `http://localhost:8000/get_image.php?studyId=${c.studyId}&type=pre`;
+
+    let poImg = new Image(); poImg.crossOrigin = "anonymous";
+    poImg.onload = () => { imgPost = poImg; donePost = true; onComplete(); };
+    poImg.onerror = () => { imgPost = null; donePost = true; onComplete(); };
+    poImg.src = `http://localhost:8000/get_image.php?studyId=${c.studyId}&type=post`;
   } else {
-    img = null;
-    document.getElementById('emptyState').style.display = 'flex';
-    draw();
+    document.getElementById('emptyState').style.display = 'flex'; draw();
   }
 }
 
@@ -715,7 +715,7 @@ function exportCSV(){
     });
     const mAch=o=>{const a=[o.ach1,o.ach2].filter(v=>v!=null&&!isNaN(v));return a.length?a.reduce((x,y)=>x+y,0)/a.length:null;};
     const mp=(c.params&&c.params.mpta)||{}, ml=(c.params&&c.params.ldfa)||{};
-    const plM=(mp.planned!=null&&!isNaN(mp.planned))?mp.planned:null, plL=(ml.unified!=null&&!isNaN(ml.planned))?ml.planned:null;
+    const plM=(mp.planned!=null&&!isNaN(mp.planned))?mp.planned:null, plL=(ml.planned!=null&&!isNaN(ml.planned))?ml.planned:null;
     const acM=mAch(mp), acL=mAch(ml);
     const ahP=(plM!=null&&plL!=null)?plM-plL:null, ahA=(acM!=null&&acL!=null)?acM-acL:null;
     let ahDev='',ahOut=''; if(ahP!=null&&ahA!=null){const dv=Math.abs(ahP-ahA);ahDev=dv.toFixed(1);ahOut=dv<=3?'0':'1';}
@@ -736,14 +736,12 @@ function allAnnotations(){
     (c.annotations||[]).forEach(a=>{
       let aCopy = JSON.parse(JSON.stringify(a));
       aCopy.studyId = c.studyId;
-      
       if (aCopy.points && aCopy.points[0] && typeof aCopy.points[0] === 'object' && !Array.isArray(aCopy.points[0])) {
         aCopy.points = aCopy.points.map(p => [p.x, p.y]);
       }
       if (aCopy.pointsNorm && aCopy.pointsNorm[0] && typeof aCopy.pointsNorm[0] === 'object' && !Array.isArray(aCopy.pointsNorm[0])) {
         aCopy.pointsNorm = aCopy.pointsNorm.map(p => [p.x, p.y]);
       }
-      
       out.push(aCopy);
     });
   });
@@ -767,8 +765,8 @@ let downPt=null, moved=false;
 
 cv.addEventListener('pointerdown',e=>{
   currentMouseScreen = { x: e.offsetX, y: e.offsetY };
-  moved=false;
-  draggedPointIndex = null;
+  moved=false; draggedPointIndex = null;
+  if(compareMode) return; // ล็อกปุ่มเมาส์ในโหมดแบ่งหน้าจอเพื่อป้องกันพิกัดแลนด์มาร์กคลาดเคลื่อน
 
   if(img && activeParam && points.length > 0) {
     const scrPoints = points.map(toScr);
@@ -776,51 +774,31 @@ cv.addEventListener('pointerdown',e=>{
       const dx = e.offsetX - scrPoints[i].x;
       const dy = e.offsetY - scrPoints[i].y;
       if(Math.sqrt(dx*dx + dy*dy) < 20) {
-        draggedPointIndex = i; 
-        cv.setPointerCapture(e.pointerId);
-        return;
+        draggedPointIndex = i; cv.setPointerCapture(e.pointerId); return;
       }
     }
   }
-
-  downPt={x:e.offsetX,y:e.offsetY};
-  cv.setPointerCapture(e.pointerId);
+  downPt={x:e.offsetX,y:e.offsetY}; cv.setPointerCapture(e.pointerId);
 });
 
 cv.addEventListener('pointermove',e=>{
   currentMouseScreen = { x: e.offsetX, y: e.offsetY };
-  
   if(draggedPointIndex !== null) {
     points[draggedPointIndex] = toImg(e.offsetX, e.offsetY);
     const need = activeParam.type==='3pt'?3:4;
-    if(points.length === need) {
-      computeResult(); 
-    }
-    updateHint();
-    draw();
-    return;
+    if(points.length === need) computeResult();
+    updateHint(); draw(); return;
   }
-
   if(!downPt)return;
   const dx=e.offsetX-downPt.x, dy=e.offsetY-downPt.y;
   if(Math.abs(dx)+Math.abs(dy)>4){
-    moved=true;
-    ox+=e.movementX;
-    oy+=e.movementY;
-    draw();
+    moved=true; ox+=e.movementX; oy+=e.movementY; draw();
   }
 });
 
 cv.addEventListener('pointerup',e=>{
-  if(draggedPointIndex !== null) {
-    draggedPointIndex = null;
-    updateHint();
-    draw();
-    return;
-  }
-  if(downPt&&!moved&&img&&activeParam){
-    placePoint(toImg(e.offsetX,e.offsetY));
-  }
+  if(draggedPointIndex !== null) { draggedPointIndex = null; updateHint(); draw(); return; }
+  if(downPt&&!moved&&img&&activeParam){ placePoint(toImg(e.offsetX,e.offsetY)); }
   downPt=null;
 });
 
@@ -853,16 +831,46 @@ document.querySelectorAll('[data-obs]').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('[data-obs]').forEach(x=>x.classList.toggle('active',x===b));
   toast('Switched to Observer '+activeObs, 1500);
 });
+
+// 🔄 ฟังก์ชันสลับเปลี่ยนแผ่นฟิล์มตามคำสั่งแพทย์ (สลับภาพแบบ Real-time ข้ามฟิล์ม)
 document.querySelectorAll('[data-film]').forEach(b=>b.onclick=()=>{
   activeFilm=b.dataset.film;
   document.querySelectorAll('[data-film]').forEach(x=>x.classList.toggle('active',x===b));
-  toast(activeFilm==='pre'?'Pre-op mode → saves as Planned':'Post-op mode → saves as Achieved', 1800);
+  toast(activeFilm==='pre'?'Pre-op mode → รูปภาพ Planned':'Post-op mode → รูปภาพ Achieved', 1800);
+  
+  img = activeFilm === 'pre' ? imgPre : imgPost;
+  if(!img) img = imgPre || imgPost; // ป้องกันบราวเซอร์ว่างเปล่า
+  imgName = activeFilm === 'pre' ? `${currentId}_pre.png` : `${currentId}_post.png`;
+  compareMode = false;
+  document.getElementById('btnCompare').classList.remove('active');
+  
   if(activeParam&&points.length>=(activeParam.type==='3pt'?3:4))computeResult();
-  updateHint();
+  fitImage(); updateHint();
 });
 
-document.getElementById('chkShowHud').onchange=draw;
+// ⇄ ปุ่มโหมดดูเปรียบเทียบรูปภาพสองฝั่ง (Pre-op ซ้าย / Post-op ขวา)
+document.getElementById('btnCompare').onclick = () => {
+  if(!imgPre || !imgPost) {
+    toast('⚠️ ต้องมีไฟล์คู่ทั้ง _pre และ _post บน Drive จึงจะเปิดมุมมองเทียบได้', 3000); return;
+  }
+  compareMode = !compareMode;
+  document.getElementById('btnCompare').classList.toggle('active', compareMode);
+  if(compareMode) {
+    toast('⇄ เปิดโหมดดูเทียบสองฝั่ง (ซ้าย Pre-op | ขวา Post-op)', 2000);
+    if(activeParam) {
+      activeParam = null;
+      document.querySelectorAll('.pick').forEach(b=>b.classList.remove('active'));
+      document.getElementById('cHint').style.display='none';
+      document.getElementById('resultPill').style.display='none';
+    }
+  } else {
+    toast('กลับสู่โหมดมุมมองเดี่ยว', 1500);
+    img = activeFilm === 'pre' ? imgPre : imgPost;
+  }
+  fitImage();
+};
 
+document.getElementById('chkShowHud').onchange=draw;
 document.getElementById('fWeight').oninput=calcBMI;
 document.getElementById('fHeight').oninput=calcBMI;
 
@@ -870,9 +878,10 @@ document.getElementById('btnSave').onclick=saveCase;
 document.getElementById('btnCsv').onclick=exportCSV;
 document.getElementById('btnAnn').onclick=exportAnnotations;
 document.getElementById('btnNew').onclick=()=>{
-  currentId=null; activeParam=null; points=[]; img=null;
+  currentId=null; activeParam=null; points=[]; img=null; imgPre=null; imgPost=null; compareMode=false;
   document.getElementById('emptyState').style.display='flex';
   document.getElementById('caseSel').value='';
+  document.getElementById('btnCompare').classList.remove('active');
   fillForm({studyId:'',params:{}}); document.getElementById('fBmi').value='';
   document.getElementById('cHint').style.display='none'; draw();
 };
@@ -890,8 +899,7 @@ document.getElementById('caseSel').onchange=e=>{
 window.addEventListener('resize',resizeCanvas);
 function toast(m, duration=1800){
   const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');
-  clearTimeout(t._t);
-  if(duration > 0) { t._t=setTimeout(()=>t.classList.remove('show'), duration); }
+  clearTimeout(t._t); if(duration > 0) { t._t=setTimeout(()=>t.classList.remove('show'), duration); }
 }
 
 /* ====================== INIT ====================== */
