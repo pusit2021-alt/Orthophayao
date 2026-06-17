@@ -149,13 +149,17 @@ body{display:flex;flex-direction:column;overflow:hidden}
     </div>
 
     <div class="card">
-      <h3>Film type</h3>
+      <h3>Film type &amp; View</h3>
       <div class="obs-toggle">
         <button id="filmPre" data-film="pre">Pre-op</button>
         <button id="filmPost" class="active" data-film="post">Post-op</button>
       </div>
-      <button id="btnCompare" class="btn sm" style="width:100%;margin-top:8px;font-weight:700;border-color:var(--purple);color:var(--purple);background:transparent;">⇄ Compare View (ดูเทียบสองฝั่ง)</button>
-      <div class="hint-txt">Pre-op → saves value as <b>Planned / target</b> (native alignment) · Post-op → saves as <b>Achieved</b> for the selected observer</div>
+      <div class="obs-toggle" style="margin-top:8px;">
+        <button id="viewAp" class="active" data-view="ap">Whole leg AP</button>
+        <button id="viewLat" data-view="lat">Knee lateral</button>
+      </div>
+      <button id="btnCompare" class="btn sm" style="width:100%;margin-top:10px;font-weight:700;border-color:var(--purple);color:var(--purple);background:transparent;">⇄ Compare View (ดูเทียบสองฝั่ง)</button>
+      <div class="hint-txt">เลือกมุมกล้องให้สอดคล้องกับพารามิเตอร์ (เช่นวัด Slope บนฟิล์ม Lateral, วัด HKA บนฟิล์ม AP)</div>
     </div>
 
     <div class="card">
@@ -266,12 +270,13 @@ const PARAMS = [
 let db=null, fbOn=false;
 let img=null, scale=1, ox=0, oy=0, imgName='';
 let activeParam=null, points=[], lastResult=null;
-let activeObs=1, activeFilm='post';
+let activeObs=1, activeFilm='post', activeView='ap'; // เพิ่มตัวแปรเก็บสถานะมุมมองฉายภาพ
 let cases={};
 let currentId=null;
 
-let imgPre=null, imgPost=null; // โครงสร้างใหม่: บันทึกแผ่นฟิล์มคู่ไว้สแตนด์บาย
-let compareMode=false;         // เช็คสถานะโหมดแบ่งสองหน้าจอ
+// ตัวแปรเก็บรูปภาพคลังฟิล์ม x-ray แยกทั้ง 4 แผ่นแบบพร้อมใช้งานข้ามฝั่ง
+let imgPreAp=null, imgPreLat=null, imgPostAp=null, imgPostLat=null;
+let compareMode=false;
 
 let draggedPointIndex = null;
 let currentMouseScreen = { x: 0, y: 0 };
@@ -310,9 +315,12 @@ function resizeCanvas(){
 }
 
 function fitImage(){
-  if (compareMode && imgPre && imgPost) {
-    const totalW = imgPre.width + imgPost.width + 40; // ดึงความกว้างของสองภาพบวกระยะห่าง 40px
-    const maxH = Math.max(imgPre.height, imgPost.height);
+  let currentPre = activeView === 'ap' ? imgPreAp : imgPreLat;
+  let currentPost = activeView === 'ap' ? imgPostAp : imgPostLat;
+  
+  if (compareMode && currentPre && currentPost) {
+    const totalW = currentPre.width + currentPost.width + 40;
+    const maxH = Math.max(currentPre.height, currentPost.height);
     const r=cwrap.getBoundingClientRect();
     scale=Math.min(r.width/totalW, r.height/maxH)*0.96;
     ox=(r.width-totalW*scale)/2; oy=(r.height-maxH*scale)/2;
@@ -333,23 +341,27 @@ function draw(){
   const r=cwrap.getBoundingClientRect();
   ctx.clearRect(0,0,r.width,r.height);
   
-  // ⇄ เรนเดอร์พิเศษในกรณีที่เปิดใช้งานโหมดดูรูปเทียบสองฝั่ง (Compare Mode) พร้อมกัน
-  if (compareMode && imgPre && imgPost) {
-    ctx.drawImage(imgPre, ox, oy, imgPre.width*scale, imgPre.height*scale);
-    const gap = 40 * scale;
-    const postOx = ox + (imgPre.width * scale) + gap;
-    ctx.drawImage(imgPost, postOx, oy, imgPost.width*scale, imgPost.height*scale);
-    
-    // วาดป้ายเขียนสัญลักษณ์ระบุด้านของฟิล์มให้แพทย์เข้าใจง่าย
-    ctx.save();
-    ctx.fillStyle = 'rgba(11, 12, 15, 0.8)';
-    ctx.fillRect(ox + 12, oy + 12, 85, 26);
-    ctx.fillRect(postOx + 12, oy + 12, 95, 26);
-    ctx.font = 'bold 12px Inter'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffd60a'; ctx.fillText('◀ PRE-OP', ox + 54, oy + 25);
-    ctx.fillStyle = '#bf5af2'; ctx.fillText('POST-OP ▶', postOx + 59, oy + 25);
-    ctx.restore();
-    return;
+  // ⇄ เรนเดอร์โหมดดูเทียบสองฝั่ง (โดยเทียบ Pre-op กับ Post-op ของมุมมองที่เลือกอยู่ปัจจุบัน)
+  if (compareMode) {
+    let currentPre = activeView === 'ap' ? imgPreAp : imgPreLat;
+    let currentPost = activeView === 'ap' ? imgPostAp : imgPostLat;
+    if (currentPre && currentPost) {
+      ctx.drawImage(currentPre, ox, oy, currentPre.width*scale, currentPre.height*scale);
+      const gap = 40 * scale;
+      const postOx = ox + (currentPre.width * scale) + gap;
+      ctx.drawImage(currentPost, postOx, oy, currentPost.width*scale, currentPost.height*scale);
+      
+      ctx.save();
+      ctx.fillStyle = 'rgba(11, 12, 15, 0.8)';
+      ctx.fillRect(ox + 12, oy + 12, 185, 26);
+      ctx.fillRect(postOx + 12, oy + 12, 195, 26);
+      ctx.font = 'bold 12px Inter'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+      let viewLabel = activeView === 'ap' ? 'Whole Leg AP' : 'Knee Lateral';
+      ctx.fillStyle = '#ffd60a'; ctx.fillText(`◀ PRE-OP (${viewLabel})`, ox + 104, oy + 25);
+      ctx.fillStyle = '#bf5af2'; ctx.fillText(`POST-OP (${viewLabel})`, postOx + 109, oy + 25);
+      ctx.restore();
+      return;
+    }
   }
 
   if(!img)return;
@@ -451,7 +463,7 @@ function buildMeasureList(){
   recalcDev();
 }
 function startMeasure(key){
-  if(compareMode) { toast('⚠️ กรุณาปิดโหมดดูเทียบเพื่อลงมือปักจุดมาร์กมุม', 2500); return; }
+  if(compareMode) { toast('⚠️ กรุณาปิดโหมดดูเทียบสี่แผ่นเพื่อลงมือปักจุดมาร์กมุม', 2500); return; }
   activeParam=PARAMS.find(p=>p.key===key); points=[]; lastResult=null;
   document.querySelectorAll('.pick').forEach(b=>b.classList.toggle('active',b.dataset.k===key));
   document.getElementById('paramHint').textContent=activeParam.hint;
@@ -463,9 +475,9 @@ function updateHint(){
   if(!activeParam){h.style.display='none';return;}
   h.style.display='block';
   const need=activeParam.type==='3pt'?3:4; const n=points.length;
-  const ftag=`[${activeFilm==='pre'?'PRE-OP':'POST-OP'}] `;
+  const ftag=`[${activeFilm==='pre'?'PRE-OP':'POST-OP'}] [${activeView==='ap'?'AP':'LAT'}] `;
   if(n<need) h.innerHTML=`${ftag}<b>${activeParam.name}</b> — กดคลิก: <b style="color:var(--amber)">${activeParam.labels[n]}</b> (${n+1}/${need})`;
-  else h.innerHTML=`${ftag}<b>${activeParam.name}</b> — เรียบร้อย · สามารถเลือกบันท่างด้านล่าง หรือลากวงกลมเพื่อปรับตำแหน่งใหม่ได้`;
+  else h.innerHTML=`${ftag}<b>${activeParam.name}</b> — เรียบร้อย · สามารถเลือกบันทึกด้านล่าง หรือลากวงกลมเพื่อปรับตำแหน่งใหม่ได้`;
 }
 function placePoint(p){
   const need=activeParam.type==='3pt'?3:4;
@@ -502,7 +514,7 @@ function saveAchieved(v){
     c.annotations=c.annotations||[];
     c.annotations.push({
       ts:new Date().toISOString(), param:activeParam.key, paramName:activeParam.name,
-      type:activeParam.type, film:activeFilm, obs:(activeFilm==='post'?activeObs:0),
+      type:activeParam.type, film:activeFilm, view:activeView, obs:(activeFilm==='post'?activeObs:0),
       value:val, image:imgName, imgW:img.width, imgH:img.height,
       points:points.map(p=>({ x: Math.round(p.x*10)/10, y: Math.round(p.y*10)/10 })),
       pointsNorm:points.map(p=>({ x: +(p.x/img.width).toFixed(4), y: +(p.y/img.height).toFixed(4) }))
@@ -621,7 +633,16 @@ function collectForm(){
   if(c.studyId!==currentId){delete cases[currentId];currentId=c.studyId;cases[currentId]=c;}
 }
 
-// 🌐 พัฒนาระบบโหลดฟิล์มคู่แบบขนานอัจฉริยะ (ดึงทั้งสองรูปมาสแตนด์บายรอไว้ข้ามฝั่ง)
+// 🌐 อัปเดตฟังก์ชันสลับสับเปลี่ยนรูปภาพโมเดล 4 มิติขนานแท้แบบเบ็ดเสร็จ
+function updateCurrentImage() {
+  if (activeFilm === 'pre') {
+    img = activeView === 'ap' ? imgPreAp : imgPreLat;
+  } else {
+    img = activeView === 'ap' ? imgPostAp : imgPostLat;
+  }
+  imgName = `${currentId}_${activeFilm}_${activeView}.png`;
+}
+
 function fillForm(c){
   document.getElementById('fStudyId').value=c.studyId||'';
   document.getElementById('fAge').value=c.age||'';
@@ -637,39 +658,43 @@ function fillForm(c){
   document.getElementById('fComp').value=c.comp||'';
   buildMeasureList();
   
-  imgPre = null; imgPost = null; img = null;
+  // ล้างสถานะรูปแผ่นเดิมทั้งหมดก่อนเข้าสู่ลูปดาวน์โหลดใหม่
+  imgPreAp = null; imgPreLat = null; imgPostAp = null; imgPostLat = null; img = null;
   compareMode = false;
   const compBtn = document.getElementById('btnCompare');
   if(compBtn) compBtn.classList.remove('active');
   
   if(c.studyId) {
-    toast('📥 กำลังสแกนตรวจสอบไฟล์รูปภาพ Pre & Post บน Drive...', 0);
-    let donePre = false, donePost = false;
-    let onComplete = () => {
-      if(donePre && donePost) {
-        if(imgPre || imgPost) {
+    toast('📥 กำลังโหลดฟิล์มเอ็กซเรย์ทั้ง 4 มุมมองจากระบบคลาวด์...', 0);
+    let totalToLoad = 4, loadedCount = 0;
+    
+    let checkComplete = () => {
+      loadedCount++;
+      if(loadedCount === totalToLoad) {
+        updateCurrentImage();
+        if(imgPreAp || imgPreLat || imgPostAp || imgPostLat) {
           document.getElementById('emptyState').style.display = 'none';
-          img = activeFilm === 'pre' ? imgPre : imgPost;
-          if(!img) img = imgPre || imgPost; // ตัวช่วยดึงภาพเดี่ยวกรณีเคสเก่า
-          imgName = activeFilm === 'pre' ? `${c.studyId}_pre.png` : `${c.studyId}_post.png`;
           fitImage();
-          toast('ซิงค์โครงสร้างคลังภาพเรียบร้อย ✓', 1500);
+          toast('ซิงค์โครงสร้างคลังภาพ 4 แผ่นเรียบร้อย ✓', 1500);
         } else {
           document.getElementById('emptyState').style.display = 'flex'; draw();
-          toast('💡 ไม่พบไฟล์ภาพบนคลาวด์สำหรับรหัสเคสนี้', 3500);
+          toast('💡 ไม่พบไฟล์ภาพมุมมองใด ๆ บนคลาวด์สำหรับรหัสเคสนี้', 3500);
         }
       }
     };
 
-    let pImg = new Image(); pImg.crossOrigin = "anonymous";
-    pImg.onload = () => { imgPre = pImg; donePre = true; onComplete(); };
-    pImg.onerror = () => { imgPre = null; donePre = true; onComplete(); };
-    pImg.src = `http://localhost:8000/get_image.php?studyId=${c.studyId}&type=pre`;
+    let loadImg = (suffix, callback) => {
+      let m = new Image(); m.crossOrigin = "anonymous";
+      m.onload = () => { callback(m); checkComplete(); };
+      m.onerror = () => { callback(null); checkComplete(); };
+      m.src = `http://localhost:8000/get_image.php?studyId=${c.studyId}&type=${suffix}`;
+    };
 
-    let poImg = new Image(); poImg.crossOrigin = "anonymous";
-    poImg.onload = () => { imgPost = poImg; donePost = true; onComplete(); };
-    poImg.onerror = () => { imgPost = null; donePost = true; onComplete(); };
-    poImg.src = `http://localhost:8000/get_image.php?studyId=${c.studyId}&type=post`;
+    // ยิงขนาน 4 เส้นเพื่อสอยรูปมาสแตนด์บายรอไว้บนแรมของหน้าแอปพลิเคชัน
+    loadImg('pre_ap', m => imgPreAp = m);
+    loadImg('pre_lat', m => imgPreLat = m);
+    loadImg('post_ap', m => imgPostAp = m);
+    loadImg('post_lat', m => imgPostLat = m);
   } else {
     document.getElementById('emptyState').style.display = 'flex'; draw();
   }
@@ -766,7 +791,7 @@ let downPt=null, moved=false;
 cv.addEventListener('pointerdown',e=>{
   currentMouseScreen = { x: e.offsetX, y: e.offsetY };
   moved=false; draggedPointIndex = null;
-  if(compareMode) return; // ล็อกปุ่มเมาส์ในโหมดแบ่งหน้าจอเพื่อป้องกันพิกัดแลนด์มาร์กคลาดเคลื่อน
+  if(compareMode) return; // ล็อกปุ่มกดมาร์กจุดขณะอยู่บนโหมดดูคู่เทียบเพื่อความปลอดภัย
 
   if(img && activeParam && points.length > 0) {
     const scrPoints = points.map(toScr);
@@ -832,31 +857,47 @@ document.querySelectorAll('[data-obs]').forEach(b=>b.onclick=()=>{
   toast('Switched to Observer '+activeObs, 1500);
 });
 
-// 🔄 ฟังก์ชันสลับเปลี่ยนแผ่นฟิล์มตามคำสั่งแพทย์ (สลับภาพแบบ Real-time ข้ามฟิล์ม)
+// ดักจับการกดสลับช่วงเวลาการรักษา (Pre / Post-op)
 document.querySelectorAll('[data-film]').forEach(b=>b.onclick=()=>{
   activeFilm=b.dataset.film;
   document.querySelectorAll('[data-film]').forEach(x=>x.classList.toggle('active',x===b));
-  toast(activeFilm==='pre'?'Pre-op mode → รูปภาพ Planned':'Post-op mode → รูปภาพ Achieved', 1800);
+  toast(activeFilm==='pre'?'Pre-op mode → สลับเป็นฟิล์ม Planned':'Post-op mode → สลับเป็นฟิล์ม Achieved', 1800);
   
-  img = activeFilm === 'pre' ? imgPre : imgPost;
-  if(!img) img = imgPre || imgPost; // ป้องกันบราวเซอร์ว่างเปล่า
-  imgName = activeFilm === 'pre' ? `${currentId}_pre.png` : `${currentId}_post.png`;
   compareMode = false;
   document.getElementById('btnCompare').classList.remove('active');
   
+  updateCurrentImage();
   if(activeParam&&points.length>=(activeParam.type==='3pt'?3:4))computeResult();
   fitImage(); updateHint();
 });
 
-// ⇄ ปุ่มโหมดดูเปรียบเทียบรูปภาพสองฝั่ง (Pre-op ซ้าย / Post-op ขวา)
+// ดักจับการกดสลับมุมมองกล้องฉายภาพ (Whole leg AP / Knee lateral) ที่เพิ่มเข้ามาใหม่ 🌟
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{
+  activeView=b.dataset.view;
+  document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));
+  toast(activeView==='ap'?'สลับมุมมอง: Whole leg AP (ฟิล์มตรงขาเต็ม)':'สลับมุมมอง: Knee lateral (ฟิล์มข้างข้อเข่า)', 1800);
+  
+  compareMode = false;
+  document.getElementById('btnCompare').classList.remove('active');
+  
+  updateCurrentImage();
+  if(activeParam&&points.length>=(activeParam.type==='3pt'?3:4))computeResult();
+  fitImage(); updateHint();
+});
+
+// ปุ่มโหมดแบ่งคู่เทียบสองฝั่ง (ฉลาดขึ้น: จะเอาแผ่น Pre และ Post ของมุมมองที่เปิดอยู่มาวางประกบข้างกัน)
 document.getElementById('btnCompare').onclick = () => {
-  if(!imgPre || !imgPost) {
-    toast('⚠️ ต้องมีไฟล์คู่ทั้ง _pre และ _post บน Drive จึงจะเปิดมุมมองเทียบได้', 3000); return;
+  let currentPre = activeView === 'ap' ? imgPreAp : imgPreLat;
+  let currentPost = activeView === 'ap' ? imgPostAp : imgPostLat;
+  
+  if(!currentPre || !currentPost) {
+    toast(`⚠️ ต้องมีคลังภาพคู่ของมุมมอง ${activeView==='ap'?'AP':'Lateral'} บนไดรฟ์ครบจึงจะเปิดดูได้`, 3000); return;
   }
   compareMode = !compareMode;
   document.getElementById('btnCompare').classList.toggle('active', compareMode);
   if(compareMode) {
-    toast('⇄ เปิดโหมดดูเทียบสองฝั่ง (ซ้าย Pre-op | ขวา Post-op)', 2000);
+    let titleStr = activeView === 'ap' ? 'Whole leg AP' : 'Knee lateral';
+    toast(`⇄ เปิดมุมมองคู่ขนานฟิล์มเทียบ [ ${titleStr} ]`, 2000);
     if(activeParam) {
       activeParam = null;
       document.querySelectorAll('.pick').forEach(b=>b.classList.remove('active'));
@@ -864,8 +905,8 @@ document.getElementById('btnCompare').onclick = () => {
       document.getElementById('resultPill').style.display='none';
     }
   } else {
-    toast('กลับสู่โหมดมุมมองเดี่ยว', 1500);
-    img = activeFilm === 'pre' ? imgPre : imgPost;
+    toast('กลับสู่โหมดมุมมองแผ่นเดี่ยว', 1500);
+    updateCurrentImage();
   }
   fitImage();
 };
@@ -878,7 +919,7 @@ document.getElementById('btnSave').onclick=saveCase;
 document.getElementById('btnCsv').onclick=exportCSV;
 document.getElementById('btnAnn').onclick=exportAnnotations;
 document.getElementById('btnNew').onclick=()=>{
-  currentId=null; activeParam=null; points=[]; img=null; imgPre=null; imgPost=null; compareMode=false;
+  currentId=null; activeParam=null; points=[]; img=null; imgPreAp=null; imgPreLat=null; imgPostAp=null; imgPostLat=null; compareMode=false;
   document.getElementById('emptyState').style.display='flex';
   document.getElementById('caseSel').value='';
   document.getElementById('btnCompare').classList.remove('active');
