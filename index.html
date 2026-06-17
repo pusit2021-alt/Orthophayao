@@ -651,9 +651,8 @@ function fillForm(c){
   buildMeasureList();
   
   if(c.studyId) {
-    toast('📥 กำลังโหลดรูปภาพเคสจาก secure Google Drive...', 0);
+    toast('📥 กำลังโหลดรูปภาพเคสจาก drive ...', 0);
     img = new Image();
-    // อนุญาตข้ามโดเมนข้ามพอร์ตโลคอล ป้องกันปัญหารูปภาพติดล็อกความปลอดภัยตอนวาดพิกัด (CORS Canvas Taint)
     img.crossOrigin = "anonymous"; 
     img.onload = () => {
       document.getElementById('emptyState').style.display = 'none';
@@ -664,10 +663,11 @@ function fillForm(c){
       img = null;
       document.getElementById('emptyState').style.display = 'flex';
       draw();
-      toast('💡 ไม่พบไฟล์ภาพบน Drive (คุณยังสามารถเลือกเปิดไฟล์ในเครื่องหรือวางภาพด้วยมือได้ตามปกติ)', 3500);
+      toast('💡 ไม่พบไฟล์ภาพ (ตรวจสอบว่ารันเซิร์ฟเวอร์ใน Terminal หรือตั้งชื่อไฟล์ตรงกันไหม)', 3500);
     };
-    // เปลี่ยนจาก localhost มาชี้เป้าเข้าหาโฮสติ้งจริงที่คุณสมัครไว้
-    img.src = `https://easytka.site.je/get_image.php?studyId=${c.studyId}`;
+    
+    // 🎯 ดึงกลับมาใช้พอร์ต 8000 ในเครื่องเรา สบายใจที่สุดครับ
+    img.src = `http://localhost:8000/get_image.php?studyId=${c.studyId}`;
   } else {
     img = null;
     document.getElementById('emptyState').style.display = 'flex';
